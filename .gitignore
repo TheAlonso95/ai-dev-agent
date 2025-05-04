@@ -1,0 +1,41 @@
+.env
+# Binaries
+/bin/
+/dist/
+/build/
+/*.exe
+/*.out
+/*.test
+
+# Build output
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Go-related
+*.mod
+*.sum
+vendor/
+
+# Go tools cache
+*.cache/
+*.coverprofile
+
+# Env & config
+.env.* # support for .env.local, etc.
+
+# IDEs/editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# GitHub CLI auth cache (optional, if you're using gh)
+.github/
+
+# Dependency managers
+.gomodcache/
+.env
+.env
