@@ -38,9 +38,21 @@ func CreateRepo(repoName string, token string) error {
 }
 
 func CreateIssue(owner, repo, token string, task Task) error {
-	issue := map[string]string{
-		"title": task.Title,
-		"body":  task.Body,
+	// Format acceptance criteria into markdown
+	acSection := ""
+	if len(task.AcceptanceCriteria) > 0 {
+		acSection = "### Acceptance Criteria:\n"
+		for _, item := range task.AcceptanceCriteria {
+			acSection += fmt.Sprintf("- %s\n", item)
+		}
+	}
+
+	fullBody := fmt.Sprintf("%s\n\n%s", task.Body, acSection)
+
+	issue := map[string]interface{}{
+		"title":  task.Title,
+		"body":   fullBody,
+		"labels": task.Labels,
 	}
 	jsonData, _ := json.Marshal(issue)
 
