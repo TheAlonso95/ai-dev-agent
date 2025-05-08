@@ -7,9 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"time"
 
 	. "github.com/TheAlonso95/ai-dev-agent/internal/tasks"
 )
@@ -121,49 +118,179 @@ func FetchIssue(owner, repo string, issueNumber int, token string) (*Issue, erro
 }
 
 func CreateBranchAndCommit(repo string, files []File, token string) error {
-	branch := fmt.Sprintf("ai/issue-%d-%d", time.Now().Unix(), os.Getpid())
-
-	// Create branch
-	cmd := exec.Command("git", "checkout", "-b", branch)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create git branch: %w", err)
-	}
-
-	// Write files
+	owner := os.Getenv("GITHUB_USERNAME")
 	for _, file := range files {
-		dir := filepath.Dir(file.Path)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create dir %s: %w", dir, err)
+		// Step 1: Create blob
+		blobSHA, err := createBlob(owner, repo, file, token)
+		if err != nil {
+			return err
 		}
-		if err := os.WriteFile(file.Path, []byte(file.Content), 0644); err != nil {
-			return fmt.Errorf("failed to write file %s: %w", file.Path, err)
+
+		// Step 2: Get current commit and tree
+		baseCommitSHA, baseTreeSHA, err := getBaseCommitAndTree(owner, repo, token)
+		if err != nil {
+			return err
+		}
+
+		// Step 3: Create tree
+		treeSHA, err := createTree(owner, repo, file, blobSHA, baseTreeSHA, token)
+		if err != nil {
+			return err
+		}
+
+		// Step 4: Create commit
+		commitSHA, err := createCommit(owner, repo, file, treeSHA, baseCommitSHA, token)
+		if err != nil {
+			return err
+		}
+
+		// Step 5: Update the reference to point to new commit
+		err = updateRef(owner, repo, commitSHA, token)
+		if err != nil {
+			return err
 		}
 	}
-
-	// Commit changes
-	cmd = exec.Command("git", "add", ".")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git add failed: %w", err)
-	}
-
-	cmd = exec.Command("git", "commit", "-m", "AI: implement feature from issue")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git commit failed: %w", err)
-	}
-
-	// Push branch
-	cmd = exec.Command("git", "push", "-u", "origin", branch)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("git push failed: %w", err)
-	}
-
 	return nil
+}
+
+func createBlob(owner, repo string, file File, token string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/blobs", owner, repo)
+	body := map[string]string{
+		"content":  file.Content,
+		"encoding": "utf-8",
+	}
+	data, _ := json.Marshal(body)
+	resp, err := doPost(url, data, token)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		SHA string `json:"sha"`
+	}
+	json.Unmarshal(resp, &result)
+	return result.SHA, nil
+}
+
+func getBaseCommitAndTree(owner, repo, token string) (string, string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/ref/heads/main", owner, repo)
+	resp, err := doGet(url, token)
+	if err != nil {
+		return "", "", err
+	}
+	var ref struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	json.Unmarshal(resp, &ref)
+
+	commitURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/commits/%s", owner, repo, ref.Object.SHA)
+	resp, err = doGet(commitURL, token)
+	if err != nil {
+		return "", "", err
+	}
+	var commit struct {
+		SHA  string `json:"sha"`
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	json.Unmarshal(resp, &commit)
+	return commit.SHA, commit.Tree.SHA, nil
+}
+
+func createTree(owner, repo string, file File, blobSHA, baseTreeSHA, token string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/trees", owner, repo)
+	body := map[string]interface{}{
+		"base_tree": baseTreeSHA,
+		"tree": []map[string]string{
+			{
+				"path": file.Path,
+				"mode": "100644",
+				"type": "blob",
+				"sha":  blobSHA,
+			},
+		},
+	}
+	data, _ := json.Marshal(body)
+	resp, err := doPost(url, data, token)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		SHA string `json:"sha"`
+	}
+	json.Unmarshal(resp, &result)
+	return result.SHA, nil
+}
+
+func createCommit(owner, repo string, file File, treeSHA, parentSHA, token string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/commits", owner, repo)
+	body := map[string]interface{}{
+		"message": fmt.Sprintf("docs: add %s", file.Path),
+		"tree":    treeSHA,
+		"parents": []string{parentSHA},
+	}
+	data, _ := json.Marshal(body)
+	resp, err := doPost(url, data, token)
+	if err != nil {
+		return "", err
+	}
+	var result struct {
+		SHA string `json:"sha"`
+	}
+	json.Unmarshal(resp, &result)
+	return result.SHA, nil
+}
+
+func updateRef(owner, repo, commitSHA, token string) error {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/git/refs/heads/main", owner, repo)
+	body := map[string]string{
+		"sha":   commitSHA,
+		"force": "true",
+	}
+	data, _ := json.Marshal(body)
+	_, err := doPatch(url, data, token)
+	return err
+}
+
+func doGet(url, token string) ([]byte, error) {
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
+
+func doPost(url string, data []byte, token string) ([]byte, error) {
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
+
+func doPatch(url string, data []byte, token string) ([]byte, error) {
+	req, _ := http.NewRequest("PATCH", url, bytes.NewBuffer(data))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
 }

@@ -59,6 +59,24 @@ var initCmd = &cobra.Command{
 		}
 
 		fmt.Println("✅ Project setup complete:", repoName)
+
+		fmt.Println("📝 Generating README.md via AI...")
+		readme, err := openai.GenerateReadme(projectName, idea, stack, openaiKey)
+		if err != nil {
+			log.Fatalf("Failed to generate README: %v", err)
+		}
+
+		file := github.File{
+			Path:    "README.md",
+			Content: readme,
+		}
+
+		err = github.CreateBranchAndCommit(projectName, []github.File{file}, token)
+		if err != nil {
+			log.Fatalf("Failed to commit README: %v", err)
+		}
+
+		fmt.Println("✅ README committed to main branch in repo:", projectName)
 	},
 }
 
