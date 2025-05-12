@@ -32,9 +32,6 @@ vendor/
 *.swp
 *~
 
-# GitHub CLI auth cache (optional, if you're using gh)
-.github/
-
 # Dependency managers
 .gomodcache/
 .env
