@@ -40,6 +40,7 @@ var initCmd = &cobra.Command{
 			projectName = "ai-" + sanitizeRepoName(idea)
 		}
 
+		fmt.Println("Creating project with name:", repoName, projectName)
 		err = github.CreateRepo(projectName, token)
 		if err != nil {
 			log.Fatal(err)
