@@ -14,9 +14,6 @@
 .DS_Store
 Thumbs.db
 
-# Go-related
-*.mod
-*.sum
 vendor/
 
 # Go tools cache
