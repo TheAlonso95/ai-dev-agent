@@ -72,6 +72,8 @@ var initCmd = &cobra.Command{
 			Content: readme,
 		}
 
+		// The repository is empty at this point, so we need to initialize it
+		// CreateBranchAndCommit will internally handle the empty repository case
 		err = github.CreateBranchAndCommit(projectName, []github.File{file}, token)
 		if err != nil {
 			log.Fatalf("Failed to commit README: %v", err)
