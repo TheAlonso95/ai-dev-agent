@@ -64,6 +64,7 @@ ai-dev-agent/
 ├── .env             # (Ignored) Contains API keys
 ├── .gitignore
 ├── go.mod
+├── Makefile         # Common development commands
 ├── README.md
 ```
 
@@ -91,7 +92,36 @@ GEMINI_API_KEY=your-gemini-api-key
 
 ### 3. Run the CLI
 ```bash
+# Direct method
 go run main.go init "Your app idea here"
+
+# Using Makefile
+make run ARGS="init 'Your app idea here'"
+# OR for initialization specifically
+make init ARGS="'Your app idea here'"
+```
+
+### 4. Using the Makefile
+This project includes a Makefile to simplify common development tasks:
+
+```bash
+# Build the application
+make build
+
+# Run tests
+make test
+
+# Format code
+make fmt
+
+# Run linter
+make lint
+
+# Clean build artifacts
+make clean
+
+# Show all available commands
+make help
 ```
 
 ---
